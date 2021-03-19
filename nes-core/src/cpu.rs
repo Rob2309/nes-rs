@@ -307,9 +307,22 @@ impl Cpu {
         }
     }
 
-    pub fn op_brk(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
-        // TODO: Implement op_brk
-        panic!("op_brk not implemented");
+    pub fn op_brk(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
+        let ret_addr_low = (self.reg_pc & 0xFF) as u8;
+        let ret_addr_high = (self.reg_pc.wrapping_shr(8)) as u8;
+        let p = self.reg_p | 0x30;
+
+        self.push(ret_addr_high, memory);
+        self.push(ret_addr_low, memory);
+        self.push(p, memory);
+
+        self.set_flag(Flags::InterruptDisable, true);
+
+        let vect = memory.load16(0xFFFE);
+
+        self.reg_pc = vect;
+
+        0
     }
 
     pub fn op_bvc(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
@@ -478,8 +491,17 @@ impl Cpu {
     }
 
     pub fn op_jsr(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
-        // TODO: implement op_jsr
-        panic!("op_jsr not implemented");
+        let (jmp_addr, _) = self.get_operand_addr(addr_mode, memory);
+
+        let ret_addr = self.reg_pc.wrapping_sub(1);
+        let ret_high = ret_addr.wrapping_shr(8) as u8;
+        let ret_low = (ret_addr & 0xFF) as u8;
+        self.push(ret_high, memory);
+        self.push(ret_low, memory);
+
+        self.reg_pc = jmp_addr;
+
+        0
     }
 
     pub fn op_lda(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
@@ -559,27 +581,47 @@ impl Cpu {
         extra_cycle as u8
     }
 
+    fn push(&mut self, val: u8, memory: &mut dyn Memory) {
+        let addr = 0x0100 | (self.reg_s as u16);
+        memory.store8(addr, val);
+        self.reg_s = self.reg_s.wrapping_sub(1);
+    }
+
+    fn pull(&mut self, memory: &mut dyn Memory) -> u8 {
+        self.reg_s = self.reg_s.wrapping_add(1);
+        let addr = 0x0100 | (self.reg_s as u16);
+        memory.load8(addr)
+    }
+
     pub fn op_pha(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
-        // TODO: implemen op_pha
-        panic!("op_pha not implemented");
+        self.push(self.reg_a, memory);
+        0
     }
 
     pub fn op_php(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
-        // TODO: implemen op_php
-        panic!("op_php not implemented");
+        let val = self.reg_p | 0x30;
+        self.push(val, memory);
+        0
     }
 
     pub fn op_pla(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
-        // TODO: implemen op_pla
-        panic!("op_pla not implemented");
+        let val = self.pull(memory);
+        self.reg_a = val;
+
+        self.set_flag(Flags::Zero, self.reg_a == 0);
+        self.set_flag(Flags::Negative, (self.reg_a & 0x80) != 0);
+
+        0
     }
 
     pub fn op_plp(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
-        // TODO: implemen op_plp
-        panic!("op_plp not implemented");
+        let val = self.pull(memory);
+        self.reg_p = val & 0xCF;
+
+        0
     }
 
-    pub fn op_rol_a(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
+    pub fn op_rol_a(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
         let mut res = (self.reg_a as u16) << 1;
         if self.get_flag(Flags::Carry) {
             res |= 0x01;
@@ -615,7 +657,7 @@ impl Cpu {
         0
     }
 
-    pub fn op_ror_a(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
+    pub fn op_ror_a(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
         let mut res = self.reg_a.wrapping_shr(1);
         if self.get_flag(Flags::Carry) {
             res |= 0x80;
@@ -652,13 +694,27 @@ impl Cpu {
     }
 
     pub fn op_rti(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
-        // TODO: implement op_rti
-        panic!("op_rti not implemented");
+        let p = self.pull(memory);
+        let ret_addr_low = self.pull(memory);
+        let ret_addr_high = self.pull(memory);
+
+        let ret_addr = ((ret_addr_high as u16) << 8) | (ret_addr_low as u16);
+
+        self.reg_p = p & 0xCF;
+        self.reg_pc = ret_addr;
+
+        0
     }
 
     pub fn op_rts(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
-        // TODO: implement op_rts
-        panic!("op_rts not implemented");
+        let ret_addr_low = self.pull(memory);
+        let ret_addr_high = self.pull(memory);
+
+        let ret_addr = ((ret_addr_high as u16) << 8) | (ret_addr_low as u16);
+
+        self.reg_pc = ret_addr.wrapping_add(1);
+
+        0
     }
 
     pub fn op_sbc(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
@@ -679,6 +735,96 @@ impl Cpu {
         self.reg_a = (res & 0xFF) as u8;
 
         extra_cycle as u8
+    }
+
+    pub fn op_sec(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        self.set_flag(Flags::Carry, true);
+        0
+    }
+
+    pub fn op_sed(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        self.set_flag(Flags::Decimal, true);
+        0
+    }
+
+    pub fn op_sei(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        self.set_flag(Flags::InterruptDisable, true);
+        0
+    }
+
+    pub fn sta(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
+        let (op_addr, _) = self.get_operand_addr(addr_mode, memory);
+        
+        memory.store8(op_addr, self.reg_a);
+
+        0
+    }
+
+    pub fn stx(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
+        let (op_addr, _) = self.get_operand_addr(addr_mode, memory);
+        
+        memory.store8(op_addr, self.reg_x);
+
+        0
+    }
+
+    pub fn sty(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
+        let (op_addr, _) = self.get_operand_addr(addr_mode, memory);
+        
+        memory.store8(op_addr, self.reg_y);
+
+        0
+    }
+
+    pub fn tax(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        self.reg_x = self.reg_a;
+
+        self.set_flag(Flags::Zero, self.reg_x == 0);
+        self.set_flag(Flags::Negative, (self.reg_x & 0x80) != 0);
+
+        0
+    }
+
+    pub fn tay(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        self.reg_y = self.reg_a;
+
+        self.set_flag(Flags::Zero, self.reg_y == 0);
+        self.set_flag(Flags::Negative, (self.reg_y & 0x80) != 0);
+
+        0
+    }
+
+    pub fn tsx(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        self.reg_x = self.reg_s;
+
+        self.set_flag(Flags::Zero, self.reg_x == 0);
+        self.set_flag(Flags::Negative, (self.reg_x & 0x80) != 0);
+
+        0
+    }
+
+    pub fn op_txa(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        self.reg_a = self.reg_x;
+
+        self.set_flag(Flags::Zero, self.reg_a == 0);
+        self.set_flag(Flags::Negative, (self.reg_a & 0x80) != 0);
+
+        0
+    }
+
+    pub fn txs(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        self.reg_s = self.reg_x;
+
+        0
+    }
+
+    pub fn tya(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        self.reg_a = self.reg_y;
+
+        self.set_flag(Flags::Zero, self.reg_a == 0);
+        self.set_flag(Flags::Negative, (self.reg_a & 0x80) != 0);
+
+        0
     }
 
 }
