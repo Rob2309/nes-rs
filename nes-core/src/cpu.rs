@@ -1,4 +1,4 @@
-use crate::memory::Memory;
+use crate::{cpu_ops::{self, CPU_OPS, CpuOp}, memory::Memory};
 
 pub const CPU_CLOCK_DIV: i32 = 12;
 
@@ -9,10 +9,21 @@ pub struct Cpu {
     reg_pc: u16,
     reg_s: u8,
     reg_p: u8,
+
+    cycle_counter: u64,
+    remaining_cycles: u8,
+
+    opmap: [CpuOp; 0x100],
 }
 
 impl Cpu {
     pub fn new() -> Self {
+        let mut opmap = [CpuOp{ name: "???", opcode: 0x00, addr_mode: AddressingMode::Implicit, cycles: 1, func: Self::op_invalid}; 0x100];
+
+        for op in &CPU_OPS {
+            opmap[op.opcode as usize] = *op;
+        }
+        
         Self {
             reg_a: 0,
             reg_x: 0,
@@ -20,7 +31,46 @@ impl Cpu {
             reg_pc: 0,
             reg_s: 0,
             reg_p: 0,
+
+            cycle_counter: 0,
+            remaining_cycles: 1,
+
+            opmap
         }
+    }
+
+    pub fn reset(&mut self, memory: &mut dyn Memory) {
+        self.reg_p = Flags::InterruptDisable as u8;
+        self.reg_a = 0;
+        self.reg_x = 0;
+        self.reg_y = 0;
+        self.reg_s = 0xFD;
+        
+        self.reg_pc = memory.load16(0xFFFC);
+
+        self.cycle_counter = 0;
+        self.remaining_cycles = 7;
+    }
+
+    pub fn cycle(&mut self, memory: &mut dyn Memory) {
+        self.remaining_cycles -= 1;
+        self.cycle_counter += 1;
+
+        if self.remaining_cycles == 0 {
+            let opcode = memory.load8(self.reg_pc);
+            let op = self.opmap[opcode as usize];
+
+            println!("{:0>4X}  {}  A:{:0>2X} X:{:0>2X} Y:{:0>2X} P:{:0>2X} SP:{:0>2X}  CYC:{}", self.reg_pc, op.name, self.reg_a, self.reg_x, self.reg_y, self.reg_p | 0x20, self.reg_s, self.cycle_counter);
+
+            self.reg_pc += 1;
+
+            let extra_cycles = (op.func)(self, op.addr_mode, memory);
+            self.remaining_cycles = op.cycles + extra_cycles;
+        }
+    }
+
+    pub fn op_invalid(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+        0
     }
 
     fn set_flag(&mut self, flag: Flags, value: bool) {
@@ -752,7 +802,7 @@ impl Cpu {
         0
     }
 
-    pub fn sta(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
+    pub fn op_sta(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let (op_addr, _) = self.get_operand_addr(addr_mode, memory);
         
         memory.store8(op_addr, self.reg_a);
@@ -760,7 +810,7 @@ impl Cpu {
         0
     }
 
-    pub fn stx(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
+    pub fn op_stx(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let (op_addr, _) = self.get_operand_addr(addr_mode, memory);
         
         memory.store8(op_addr, self.reg_x);
@@ -768,7 +818,7 @@ impl Cpu {
         0
     }
 
-    pub fn sty(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
+    pub fn op_sty(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let (op_addr, _) = self.get_operand_addr(addr_mode, memory);
         
         memory.store8(op_addr, self.reg_y);
@@ -776,7 +826,7 @@ impl Cpu {
         0
     }
 
-    pub fn tax(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+    pub fn op_tax(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
         self.reg_x = self.reg_a;
 
         self.set_flag(Flags::Zero, self.reg_x == 0);
@@ -785,7 +835,7 @@ impl Cpu {
         0
     }
 
-    pub fn tay(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+    pub fn op_tay(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
         self.reg_y = self.reg_a;
 
         self.set_flag(Flags::Zero, self.reg_y == 0);
@@ -794,7 +844,7 @@ impl Cpu {
         0
     }
 
-    pub fn tsx(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+    pub fn op_tsx(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
         self.reg_x = self.reg_s;
 
         self.set_flag(Flags::Zero, self.reg_x == 0);
@@ -812,13 +862,13 @@ impl Cpu {
         0
     }
 
-    pub fn txs(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+    pub fn op_txs(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
         self.reg_s = self.reg_x;
 
         0
     }
 
-    pub fn tya(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
+    pub fn op_tya(&mut self, _: AddressingMode, _: &mut dyn Memory) -> u8 {
         self.reg_a = self.reg_y;
 
         self.set_flag(Flags::Zero, self.reg_a == 0);
@@ -830,7 +880,7 @@ impl Cpu {
 }
 
 /// Addressing Modes for Cpu Instructions
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum AddressingMode {
     /// No explicit operand (e.g. INX)
     Implicit,
