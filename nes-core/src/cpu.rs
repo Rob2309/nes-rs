@@ -232,6 +232,8 @@ impl Cpu {
         self.set_flag(Flags::Zero, res == 0);
         self.set_flag(Flags::Negative, (res & 0x80) != 0);
 
+        self.reg_a = res;
+
         extra_cycle as u8
     }
 
@@ -422,7 +424,7 @@ impl Cpu {
         let op = memory.load8(op_addr);
 
         self.set_flag(Flags::Carry, self.reg_a >= op);
-        self.set_flag(Flags::Carry, self.reg_a == op);
+        self.set_flag(Flags::Zero, self.reg_a == op);
 
         let tmp = (self.reg_a as u16).wrapping_sub(op as u16);
         self.set_flag(Flags::Negative, (tmp & 0x80) != 0);
@@ -435,7 +437,7 @@ impl Cpu {
         let op = memory.load8(op_addr);
 
         self.set_flag(Flags::Carry, self.reg_x >= op);
-        self.set_flag(Flags::Carry, self.reg_x == op);
+        self.set_flag(Flags::Zero, self.reg_x == op);
 
         let tmp = (self.reg_x as u16).wrapping_sub(op as u16);
         self.set_flag(Flags::Negative, (tmp & 0x80) != 0);
@@ -448,7 +450,7 @@ impl Cpu {
         let op = memory.load8(op_addr);
 
         self.set_flag(Flags::Carry, self.reg_y >= op);
-        self.set_flag(Flags::Carry, self.reg_y == op);
+        self.set_flag(Flags::Zero, self.reg_y == op);
 
         let tmp = (self.reg_y as u16).wrapping_sub(op as u16);
         self.set_flag(Flags::Negative, (tmp & 0x80) != 0);

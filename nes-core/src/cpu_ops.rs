@@ -123,9 +123,9 @@ pub const CPU_OPS: [CpuOp; 151] = [
 
     CpuOp { name: "LDY", opcode: 0xA0, addr_mode: AddressingMode::Immediate, cycles: 2, func: Cpu::op_ldy },
     CpuOp { name: "LDY", opcode: 0xA4, addr_mode: AddressingMode::ZeroPage, cycles: 3, func: Cpu::op_ldy },
-    CpuOp { name: "LDY", opcode: 0xB4, addr_mode: AddressingMode::ZeroPageY, cycles: 4, func: Cpu::op_ldy },
+    CpuOp { name: "LDY", opcode: 0xB4, addr_mode: AddressingMode::ZeroPageX, cycles: 4, func: Cpu::op_ldy },
     CpuOp { name: "LDY", opcode: 0xAC, addr_mode: AddressingMode::Absolute, cycles: 4, func: Cpu::op_ldy },
-    CpuOp { name: "LDY", opcode: 0xBC, addr_mode: AddressingMode::AbsoluteY, cycles: 4, func: Cpu::op_ldy },
+    CpuOp { name: "LDY", opcode: 0xBC, addr_mode: AddressingMode::AbsoluteX, cycles: 4, func: Cpu::op_ldy },
 
     CpuOp { name: "LSR", opcode: 0x4A, addr_mode: AddressingMode::Implicit, cycles: 2, func: Cpu::op_lsr_a },
     CpuOp { name: "LSR", opcode: 0x46, addr_mode: AddressingMode::ZeroPage, cycles: 5, func: Cpu::op_lsr_m },
