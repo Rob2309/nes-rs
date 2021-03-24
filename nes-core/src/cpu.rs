@@ -39,6 +39,13 @@ impl Cpu {
         }
     }
 
+    /// Resets the CPU to the following state
+    /// - P: InterruptDisable
+    /// - A, X, Y: 0
+    /// - S: 0xFD
+    /// - PC: loaded from reset vector (0xFFFC)
+    ///
+    /// The reset will take 7 clock cycles
     pub fn reset(&mut self, memory: &mut dyn Memory) {
         self.reg_p = Flags::InterruptDisable as u8;
         self.reg_a = 0;
@@ -52,6 +59,11 @@ impl Cpu {
         self.remaining_cycles = 7;
     }
 
+    /// Performs a single CPU Cycle
+    /// # Instruction emulation
+    /// Each instruction is executed instantaniously, meaning that every instruction is
+    /// simulated in a single clock cycle, while the remaining cycles are spent waiting.
+    /// This means that the emulation currently is not cycle accurate.
     pub fn cycle(&mut self, memory: &mut dyn Memory) {
         self.remaining_cycles -= 1;
         self.cycle_counter += 1;
@@ -63,7 +75,9 @@ impl Cpu {
             println!("{:0>4X}  {}  A:{:0>2X} X:{:0>2X} Y:{:0>2X} P:{:0>2X} SP:{:0>2X}  CYC:{}", self.reg_pc, op.name, self.reg_a, self.reg_x, self.reg_y, self.reg_p | 0x20, self.reg_s, self.cycle_counter);
 
             self.reg_pc += 1;
-
+            
+            // extra_cycles will be non-zero if the given instruction caused an 'oops' cycle,
+            // or if a branch instruction took the branch (+ another cycle if the branch crosses a page)
             let extra_cycles = (op.func)(self, op.addr_mode, memory);
             self.remaining_cycles = op.cycles + extra_cycles;
         }
@@ -73,6 +87,8 @@ impl Cpu {
         0
     }
 
+    /// Sets the given flag to `value`.
+    /// See [`Flags`]
     fn set_flag(&mut self, flag: Flags, value: bool) {
         if value {
             self.reg_p |= flag as u8;
@@ -80,6 +96,8 @@ impl Cpu {
             self.reg_p &= !(flag as u8);
         }
     }
+    /// Gets the value of the given flag.
+    /// See [`Flags`]
     fn get_flag(&self, flag: Flags) -> bool {
         (self.reg_p & flag as u8) != 0
     }
@@ -90,6 +108,8 @@ impl Cpu {
     /// (addr, extra_cycle)
     /// - `addr`: the resolved address of the instruction operand
     /// - `extra_cycle`: whether the addressing mode caused an extra cycle on a reading instruction
+    /// # Panics
+    /// This function panics when `addr_mode` is [`AddressingMode::Implicit`]
     fn get_operand_addr(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> (u16, bool) {
         match addr_mode {
             AddressingMode::ZeroPage => {
@@ -262,8 +282,14 @@ impl Cpu {
         0
     }
 
+    /// Performs a relative branch with `op` as signed 8-Bit Offset
+    /// # Cycles
+    /// - A branch instruction that does not branch takes 2 Cycles
+    /// - If a branch is taken, add one cycle
+    /// - If the branch crosses a page (e.g. 0x01xx -> 0x02xx), add another cycle
     fn relative_branch(&mut self, op: u8) -> u8 {
         let mut offs = op as u16;
+        // perform sign extension
         if (offs & 0x80) != 0 {
             offs |= 0xFF00;
         }
@@ -273,6 +299,7 @@ impl Cpu {
         let old_pc = self.reg_pc;
         self.reg_pc = new_pc;
 
+        // check if branch is across pages
         if (old_pc & 0xFF00) != (new_pc & 0xFF00) {
             2
         } else {
@@ -915,8 +942,9 @@ pub enum AddressingMode {
     IndirectIndexed,
 }
 
+/// Flags in the P register
 #[derive(Debug)]
-pub enum Flags {
+enum Flags {
     Carry = 0x01,
     Zero = 0x02,
     InterruptDisable = 0x04,

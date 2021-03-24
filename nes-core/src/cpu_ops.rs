@@ -1,17 +1,27 @@
 use crate::{cpu::{AddressingMode, Cpu}, memory::Memory};
 
-pub type CpuOpFunc = fn (&mut Cpu, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8;
+/// A Function emulating a single CPU instruction
+/// - `addr_mode`: the concrete [`AddressingMode`] the instruction is using (allows for multiple instruction encodings using the same functions)
+/// - `memory`: a [`Memory`] object that can be used to access CPU and PPU memory
+pub(crate) type CpuOpFunc = fn (&mut Cpu, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8;
 
+/// Describes a single CPU instruction and its encoding
 #[derive(Clone, Copy)]
-pub struct CpuOp {
+pub(crate) struct CpuOp {
+    /// Mnemonic of the instruction (used for debugging)
     pub name: &'static str,
+    /// 8-Bit opcode of the instruction, as used by the CPU
     pub opcode: u8,
+    /// [`AddressingMode`] of the instruction (describes which operands it takes)
     pub addr_mode: AddressingMode,
+    /// How many cycles the instruction takes (without 'oops' or branch cycles)
     pub cycles: u8,
+    /// The function that emulates this instruction, see [`CpuOpFunc`]
     pub func: CpuOpFunc
 }
 
-pub const CPU_OPS: [CpuOp; 151] = [
+/// Collection of all *official* CPU instructions
+pub(crate) const CPU_OPS: [CpuOp; 151] = [
     CpuOp { name: "ADC", opcode: 0x69, addr_mode: AddressingMode::Immediate, cycles: 2, func: Cpu::op_adc },
     CpuOp { name: "ADC", opcode: 0x65, addr_mode: AddressingMode::ZeroPage, cycles: 3, func: Cpu::op_adc },
     CpuOp { name: "ADC", opcode: 0x75, addr_mode: AddressingMode::ZeroPageX, cycles: 4, func: Cpu::op_adc },
