@@ -59,7 +59,7 @@ fn main() {
 
     cpu.reset(&mut mapper);
 
-    for i in 0..26555 {
-        cpu.cycle(&mut mapper);
+    for _ in 0..9000 {
+        cpu.execute_single_instruction(&mut mapper);
     }
 }
