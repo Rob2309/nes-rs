@@ -1,9 +1,9 @@
-use crate::{cpu::{AddressingMode, Cpu}, memory::Memory};
+use crate::{cpu::{AddressingMode, Cpu}, mappers::Mapper};
 
 /// A Function emulating a single CPU instruction
 /// - `addr_mode`: the concrete [`AddressingMode`] the instruction is using (allows for multiple instruction encodings using the same functions)
 /// - `memory`: a [`Memory`] object that can be used to access CPU and PPU memory
-pub(crate) type CpuOpFunc = fn (&mut Cpu, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8;
+pub(crate) type CpuOpFunc = fn (&mut Cpu, addr_mode: AddressingMode, memory: &mut dyn Mapper) -> u8;
 
 /// Describes a single CPU instruction and its encoding
 #[derive(Clone, Copy)]

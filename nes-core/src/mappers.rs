@@ -19,6 +19,12 @@ pub trait Mapper {
     /// 
     /// Only used for debugging purposes (e.g. forcing the reset vector to a different value)
     fn overwrite_prg_rom(&mut self, addr: u16, val: u8);
+
+    fn cpu_load8(&mut self, addr: u16) -> u8;
+    fn cpu_store8(&mut self, addr: u16, val: u8);
+
+    fn ppu_load8(&mut self, addr: u16) -> u8;
+    fn ppu_store8(&mut self, addr: u16, val: u8);
 }
 
 mod mapper000;

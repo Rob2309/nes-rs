@@ -1,7 +1,4 @@
-use crate::memory::Memory;
-
 use super::Mapper;
-
 
 /// NROM Mapper (http://wiki.nesdev.com/w/index.php/NROM)
 /// 
@@ -47,9 +44,7 @@ impl Mapper for Mapper000 {
     fn overwrite_prg_rom(&mut self, addr: u16, val: u8) {
         self.prg_rom[(addr & self.prg_rom_mask) as usize] = val;
     }
-}
 
-impl Memory for Mapper000 {
     fn cpu_load8(&mut self, addr: u16) -> u8 {
         if addr < 0x2000 {
             self.cpu_ram[(addr & 0x7FF) as usize]

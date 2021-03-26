@@ -1,27 +1,15 @@
 use std::fs;
 
-use nes_core::{cpu::Cpu, mappers::{Mapper, Mapper000}, memory::Memory};
-trait LoadableMapper : Mapper + Memory {
-    fn as_mapper(&mut self) -> &mut dyn Mapper;
-    fn as_memory(&mut self) -> &mut dyn Memory;
-}
-impl<T: Mapper + Memory> LoadableMapper for T {
-    fn as_mapper(&mut self) -> &mut dyn Mapper {
-        self
-    }
-    fn as_memory(&mut self) -> &mut dyn Memory {
-        self
-    }
-}
+use nes_core::{cpu::Cpu, mappers::{Mapper, Mapper000}};
 
-fn create_mapper(id: u8) -> Box<dyn LoadableMapper> {
+fn create_mapper(id: u8) -> Box<dyn Mapper> {
     match id {
         0x00 => { Box::new(Mapper000::new()) }
         _ => { panic!("No mapper with id {}", id) }
     }
 }
 
-fn load_ines(path: &str) -> Box<dyn LoadableMapper> {
+fn load_ines(path: &str) -> Box<dyn Mapper> {
     let data = fs::read(path).unwrap();
 
     if data[0] != b'N' || data[1] != b'E' || data[2] != b'S' || data[3] != 0x1A {
@@ -49,9 +37,9 @@ fn main() {
     mapper.overwrite_prg_rom(0xFFFC, 0x00);
     mapper.overwrite_prg_rom(0xFFFD, 0xC0);
 
-    cpu.reset(mapper.as_memory());
+    cpu.reset(mapper.as_mut());
 
     for _ in 0..9000 {
-        cpu.execute_single_instruction(mapper.as_memory());
+        cpu.execute_single_instruction(mapper.as_mut());
     }
 }
