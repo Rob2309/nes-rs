@@ -1,65 +1,57 @@
 use std::fs;
 
-use nes_core::{cpu::Cpu, memory::Memory};
-
-
-struct Mapper000 {
-    cpu_ram: [u8; 0x800],
-    cart_rom: [u8; 0x4000],
+use nes_core::{cpu::Cpu, mappers::{Mapper, Mapper000}, memory::Memory};
+trait LoadableMapper : Mapper + Memory {
+    fn as_mapper(&mut self) -> &mut dyn Mapper;
+    fn as_memory(&mut self) -> &mut dyn Memory;
 }
-
-impl Mapper000 {
-    pub fn new() -> Self {
-        Self{
-            cpu_ram: [0; 0x800],
-            cart_rom: [0; 0x4000],
-        }
+impl<T: Mapper + Memory> LoadableMapper for T {
+    fn as_mapper(&mut self) -> &mut dyn Mapper {
+        self
+    }
+    fn as_memory(&mut self) -> &mut dyn Memory {
+        self
     }
 }
 
-impl Memory for Mapper000 {
-    fn load8(&mut self, addr: u16) -> u8 {
-        if addr < 0x2000 {
-            self.cpu_ram[(addr & 0x7FF) as usize]
-        } else if addr >= 0x8000 {
-            self.cart_rom[(addr & 0x3FFF) as usize]
-        } else {
-            0
-        }
-    }
-
-    fn load16(&mut self, addr: u16) -> u16 {
-        let low = self.load8(addr);
-        let high = self.load8(addr.wrapping_add(1));
-        ((high as u16) << 8) | (low as u16)
-    }
-
-    fn store8(&mut self, addr: u16, val: u8) {
-        if addr < 0x2000 {
-            self.cpu_ram[(addr & 0x7FF) as usize] = val;
-        } else if addr >= 0x8000 {
-            self.cart_rom[(addr & 0x3FFF) as usize] = val;
-        }
+fn create_mapper(id: u8) -> Box<dyn LoadableMapper> {
+    match id {
+        0x00 => { Box::new(Mapper000::new()) }
+        _ => { panic!("No mapper with id {}", id) }
     }
 }
 
-fn load_test(cart_rom: &mut [u8; 0x4000]) {
-    let data = fs::read("roms/nestest.nes").unwrap();
-    cart_rom.copy_from_slice(&data[16..0x4010]);
+fn load_ines(path: &str) -> Box<dyn LoadableMapper> {
+    let data = fs::read(path).unwrap();
+
+    if data[0] != b'N' || data[1] != b'E' || data[2] != b'S' || data[3] != 0x1A {
+        panic!("Invalid INES Magic");
+    }
+
+    let prg_rom_size = data[4] as usize* 0x4000;
+    let chr_rom_size = data[5] as usize * 0x2000;
+
+    let mapper_id = ((data[6] & 0xF0) >> 4) | (data[7] & 0xF0);
+
+    let mut mapper = create_mapper(mapper_id);
+
+    mapper.load_prg_rom(&data[16..16+prg_rom_size]);
+    mapper.load_chr_rom(&data[16+prg_rom_size..16+prg_rom_size+chr_rom_size]);
+
+    mapper
 }
 
 fn main() {
     let mut cpu = Cpu::new();
-    let mut mapper = Mapper000::new();
 
-    load_test(&mut mapper.cart_rom);
+    let mut mapper = load_ines("roms/nestest.nes");
 
-    mapper.store8(0xFFFC, 0x00);
-    mapper.store8(0xFFFD, 0xC0);
+    mapper.overwrite_prg_rom(0xFFFC, 0x00);
+    mapper.overwrite_prg_rom(0xFFFD, 0xC0);
 
-    cpu.reset(&mut mapper);
+    cpu.reset(mapper.as_memory());
 
     for _ in 0..9000 {
-        cpu.execute_single_instruction(&mut mapper);
+        cpu.execute_single_instruction(mapper.as_memory());
     }
 }

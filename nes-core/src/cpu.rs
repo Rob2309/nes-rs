@@ -53,13 +53,15 @@ impl Cpu {
         self.reg_y = 0;
         self.reg_s = 0xFD;
         
-        self.reg_pc = memory.load16(0xFFFC);
+        let pc_low = memory.cpu_load8(0xFFFC);
+        let pc_high = memory.cpu_load8(0xFFFD);
+        self.reg_pc = ((pc_high as u16) << 8) | (pc_low as u16);
     }
 
     /// Performs a single CPU Instruction
     pub fn execute_single_instruction(&mut self, memory: &mut dyn Memory) {
         // cycle 0: load opcode, increment PC
-        let opcode = memory.load8(self.reg_pc);
+        let opcode = memory.cpu_load8(self.reg_pc);
         let op = self.opmap[opcode as usize];
 
         println!("{:0>4X}  {}  A:{:0>2X} X:{:0>2X} Y:{:0>2X} P:{:0>2X} SP:{:0>2X}  CYC:{}", self.reg_pc, op.name, self.reg_a, self.reg_x, self.reg_y, self.reg_p | 0x20, self.reg_s, self.master_clock / CPU_CLOCK_DIV as u64);
@@ -100,25 +102,25 @@ impl Cpu {
         match addr_mode {
             AddressingMode::Implicit => {
                 // cycle 1: read next instruction byte and throw it away
-                memory.load8(self.reg_pc);
+                memory.cpu_load8(self.reg_pc);
                 self.master_clock += CPU_CLOCK_DIV;
                 0
             }
             AddressingMode::ZeroPage => {
                 // cycle 1: load immediate 1 byte address
-                let arg = memory.load8(self.reg_pc);
+                let arg = memory.cpu_load8(self.reg_pc);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
                 arg as u16
             }
             AddressingMode::ZeroPageX => {
                 // cycle 1: load immediate 1 byte address
-                let mut arg = memory.load8(self.reg_pc);
+                let mut arg = memory.cpu_load8(self.reg_pc);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 2: dummy read from unindexed address, add X to address
-                memory.load8(arg as u16);
+                memory.cpu_load8(arg as u16);
                 self.master_clock += CPU_CLOCK_DIV;
                 // add x
                 arg = arg.wrapping_add(self.reg_x);
@@ -126,12 +128,12 @@ impl Cpu {
             }
             AddressingMode::ZeroPageY => {
                 // cycle 1: load immediate 1 byte address
-                let mut arg = memory.load8(self.reg_pc);
+                let mut arg = memory.cpu_load8(self.reg_pc);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 2: dummy read from unindexed address, add Y to address
-                memory.load8(arg as u16);
+                memory.cpu_load8(arg as u16);
                 self.master_clock += CPU_CLOCK_DIV;
                 // add y
                 arg = arg.wrapping_add(self.reg_y);
@@ -139,12 +141,12 @@ impl Cpu {
             }
             AddressingMode::Absolute => {
                 // cycle 1: load low address byte
-                let addr_low = memory.load8(self.reg_pc);
+                let addr_low = memory.cpu_load8(self.reg_pc);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 2: load high address byte
-                let addr_high = memory.load8(self.reg_pc);
+                let addr_high = memory.cpu_load8(self.reg_pc);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
@@ -153,12 +155,12 @@ impl Cpu {
             }
             AddressingMode::AbsoluteX => {
                 // cycle 1: load low addr byte
-                let mut base_addr = memory.load8(self.reg_pc) as u16;
+                let mut base_addr = memory.cpu_load8(self.reg_pc) as u16;
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 2: load high addr byte
-                base_addr |= (memory.load8(self.reg_pc) as u16) << 8;
+                base_addr |= (memory.cpu_load8(self.reg_pc) as u16) << 8;
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
@@ -167,7 +169,7 @@ impl Cpu {
                 // write and read-modify-write instructions always read the unfixed effective addr once without using the value,
                 // read instructions only have this wasted read on a page crossing
                 if !is_read || ((real_addr & 0xFF00) != (base_addr & 0xFF00)) {
-                    memory.load8((base_addr & 0xFF00) | (real_addr & 0x00FF));
+                    memory.cpu_load8((base_addr & 0xFF00) | (real_addr & 0x00FF));
                     self.master_clock += CPU_CLOCK_DIV;
                 }
 
@@ -175,12 +177,12 @@ impl Cpu {
             }
             AddressingMode::AbsoluteY => {
                 // cycle 1: load low addr byte
-                let mut base_addr = memory.load8(self.reg_pc) as u16;
+                let mut base_addr = memory.cpu_load8(self.reg_pc) as u16;
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 2: load high addr byte
-                base_addr |= (memory.load8(self.reg_pc) as u16) << 8;
+                base_addr |= (memory.cpu_load8(self.reg_pc) as u16) << 8;
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
@@ -189,7 +191,7 @@ impl Cpu {
                 // write and read-modify-write instructions always read the unfixed effective addr once without using the value,
                 // read instructions only have this wasted read on a page crossing
                 if !is_read || ((real_addr & 0xFF00) != (base_addr & 0xFF00)) {
-                    memory.load8((base_addr & 0xFF00) | (real_addr & 0x00FF));
+                    memory.cpu_load8((base_addr & 0xFF00) | (real_addr & 0x00FF));
                     self.master_clock += CPU_CLOCK_DIV;
                 }
 
@@ -207,60 +209,60 @@ impl Cpu {
             }
             AddressingMode::Indirect => {
                 // cycle 1: load ptr low
-                let ptr_low = memory.load8(self.reg_pc);
+                let ptr_low = memory.cpu_load8(self.reg_pc);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 2: load ptr high
-                let ptr_high = memory.load8(self.reg_pc);
+                let ptr_high = memory.cpu_load8(self.reg_pc);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 3: load addr low
-                let addr_low = memory.load8(((ptr_high as u16) << 8) | (ptr_low as u16));
+                let addr_low = memory.cpu_load8(((ptr_high as u16) << 8) | (ptr_low as u16));
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 4: load addr high
                 // note: if ptr_low is 0xFF, no page crossing will be handled
-                let addr_high = memory.load8(((ptr_high as u16) << 8) | (ptr_low.wrapping_add(1) as u16));
+                let addr_high = memory.cpu_load8(((ptr_high as u16) << 8) | (ptr_low.wrapping_add(1) as u16));
                 self.master_clock += CPU_CLOCK_DIV;
                 
                 ((addr_high as u16) << 8) | (addr_low as u16)
             }
             AddressingMode::IndexedIndirect => {
                 // cycle 1: load ptr
-                let mut ptr = memory.load8(self.reg_pc);
+                let mut ptr = memory.cpu_load8(self.reg_pc);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 2: dummy read address, add X
-                memory.load8(ptr as u16);
+                memory.cpu_load8(ptr as u16);
                 ptr = ptr.wrapping_add(self.reg_x);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 3: load addr low
-                let addr_low = memory.load8(ptr as u16);
+                let addr_low = memory.cpu_load8(ptr as u16);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 4: load addr high
                 // note: no page crossing will be handled
-                let addr_high = memory.load8(ptr.wrapping_add(1) as u16);
+                let addr_high = memory.cpu_load8(ptr.wrapping_add(1) as u16);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 ((addr_high as u16) << 8) | (addr_low as u16)
             }
             AddressingMode::IndirectIndexed => {
                 // cycle 1: load ptr
-                let ptr = memory.load8(self.reg_pc);
+                let ptr = memory.cpu_load8(self.reg_pc);
                 self.reg_pc = self.reg_pc.wrapping_add(1);
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 2: load addr low
-                let mut base_addr = memory.load8(ptr as u16) as u16;
+                let mut base_addr = memory.cpu_load8(ptr as u16) as u16;
                 self.master_clock += CPU_CLOCK_DIV;
 
                 // cycle 3: load addr high
-                base_addr |= (memory.load8(ptr.wrapping_add(1) as u16) as u16) << 8;
+                base_addr |= (memory.cpu_load8(ptr.wrapping_add(1) as u16) as u16) << 8;
                 self.master_clock += CPU_CLOCK_DIV;
 
                 let real_addr = base_addr.wrapping_add(self.reg_y as u16);
@@ -268,7 +270,7 @@ impl Cpu {
                 // write and read-modify-write instructions always do a useless read of the unfixed addr,
                 // read instructions only when a page is crossed by adding y
                 if !is_read || ((real_addr & 0xFF00) != (base_addr & 0xFF00)) {
-                    memory.load8((base_addr & 0xFF00) | (real_addr & 0x00FF));
+                    memory.cpu_load8((base_addr & 0xFF00) | (real_addr & 0x00FF));
                     self.master_clock += CPU_CLOCK_DIV;
                 }
 
@@ -280,7 +282,7 @@ impl Cpu {
     pub(crate) fn op_adc(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
 
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         let carry_in: u16 = if self.get_flag(Flags::Carry) { 1 } else { 0 };
@@ -302,7 +304,7 @@ impl Cpu {
     pub(crate) fn op_and(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
 
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         let res = self.reg_a & op;
@@ -332,11 +334,11 @@ impl Cpu {
         let op_addr = self.get_operand_addr(addr_mode, memory, false);
 
         // read operand
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         // dummy write value back
-        memory.store8(op_addr, op);
+        memory.cpu_store8(op_addr, op);
         self.master_clock += CPU_CLOCK_DIV;
 
         let res = (op as u16) << 1;
@@ -346,7 +348,7 @@ impl Cpu {
         self.set_flag(Flags::Negative, (res & 0x80) != 0);
 
         // write result
-        memory.store8(op_addr, (res & 0xFF) as u8);
+        memory.cpu_store8(op_addr, (res & 0xFF) as u8);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
@@ -359,7 +361,7 @@ impl Cpu {
     /// - If the branch crosses a page (e.g. 0x01xx -> 0x02xx), add another cycle
     fn relative_branch(&mut self, op: u8, memory: &mut dyn Memory) -> u8 {
         // on a taken branch, the next instruction is read and discarded
-        memory.load8(self.reg_pc);
+        memory.cpu_load8(self.reg_pc);
         self.master_clock += CPU_CLOCK_DIV;
 
         let mut offs = op as u16;
@@ -372,7 +374,7 @@ impl Cpu {
 
         if (new_pc & 0xFF00) != (self.reg_pc & 0xFF00) {
             // on page cross add another dummy read at the unfixed new pc
-            memory.load8((self.reg_pc & 0xFF00) | (new_pc & 0x00FF));
+            memory.cpu_load8((self.reg_pc & 0xFF00) | (new_pc & 0x00FF));
             self.master_clock += CPU_CLOCK_DIV;
         }
 
@@ -382,7 +384,7 @@ impl Cpu {
 
     pub(crate) fn op_bcc(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(AddressingMode::Relative, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         if !self.get_flag(Flags::Carry) {
@@ -394,7 +396,7 @@ impl Cpu {
 
     pub(crate) fn op_bcs(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(AddressingMode::Relative, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         if self.get_flag(Flags::Carry) {
@@ -406,7 +408,7 @@ impl Cpu {
 
     pub(crate) fn op_beq(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(AddressingMode::Relative, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         if self.get_flag(Flags::Zero) {
@@ -418,7 +420,7 @@ impl Cpu {
 
     pub(crate) fn op_bit(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         let res = self.reg_a & op;
@@ -432,7 +434,7 @@ impl Cpu {
 
     pub(crate) fn op_bmi(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(AddressingMode::Relative, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         if self.get_flag(Flags::Negative) {
@@ -444,7 +446,7 @@ impl Cpu {
 
     pub(crate) fn op_bne(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(AddressingMode::Relative, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         if !self.get_flag(Flags::Zero) {
@@ -456,7 +458,7 @@ impl Cpu {
 
     pub(crate) fn op_bpl(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(AddressingMode::Relative, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         if !self.get_flag(Flags::Negative) {
@@ -477,10 +479,10 @@ impl Cpu {
 
         self.set_flag(Flags::InterruptDisable, true);
 
-        let vect_low = memory.load8(0xFFFE);
+        let vect_low = memory.cpu_load8(0xFFFE);
         self.master_clock += CPU_CLOCK_DIV;
 
-        let vect_high = memory.load8(0xFFFF);
+        let vect_high = memory.cpu_load8(0xFFFF);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.reg_pc = ((vect_high as u16) << 8) | (vect_low as u16);
@@ -489,7 +491,7 @@ impl Cpu {
 
     pub(crate) fn op_bvc(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(AddressingMode::Relative, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         if !self.get_flag(Flags::Overflow) {
@@ -501,7 +503,7 @@ impl Cpu {
 
     pub(crate) fn op_bvs(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(AddressingMode::Relative, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         if self.get_flag(Flags::Overflow) {
@@ -541,7 +543,7 @@ impl Cpu {
 
     pub(crate) fn op_cmp(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.set_flag(Flags::Carry, self.reg_a >= op);
@@ -555,7 +557,7 @@ impl Cpu {
 
     pub(crate) fn op_cpx(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.set_flag(Flags::Carry, self.reg_x >= op);
@@ -569,7 +571,7 @@ impl Cpu {
 
     pub(crate) fn op_cpy(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.set_flag(Flags::Carry, self.reg_y >= op);
@@ -583,10 +585,10 @@ impl Cpu {
 
     pub(crate) fn op_dec(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
-        memory.store8(op_addr, op);
+        memory.cpu_store8(op_addr, op);
         self.master_clock += CPU_CLOCK_DIV;
 
         let res = op.wrapping_sub(1);
@@ -594,7 +596,7 @@ impl Cpu {
         self.set_flag(Flags::Zero, res == 0);
         self.set_flag(Flags::Negative, (res & 0x80) != 0);
 
-        memory.store8(op_addr, res);
+        memory.cpu_store8(op_addr, res);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
@@ -624,7 +626,7 @@ impl Cpu {
 
     pub(crate) fn op_eor(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.reg_a ^= op;
@@ -637,10 +639,10 @@ impl Cpu {
 
     pub(crate) fn op_inc(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
-        memory.store8(op_addr, op);
+        memory.cpu_store8(op_addr, op);
         self.master_clock += CPU_CLOCK_DIV;
 
         let res = op.wrapping_add(1);
@@ -648,7 +650,7 @@ impl Cpu {
         self.set_flag(Flags::Zero, res == 0);
         self.set_flag(Flags::Negative, (res & 0x80) != 0);
 
-        memory.store8(op_addr, res);
+        memory.cpu_store8(op_addr, res);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
@@ -687,18 +689,18 @@ impl Cpu {
     pub(crate) fn op_jsr(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         // note: no self.get_operand_addr here because this instruction
         // has an unusual cycle layout that does not match absolute addressing
-        let addr_low = memory.load8(self.reg_pc);
+        let addr_low = memory.cpu_load8(self.reg_pc);
         self.reg_pc = self.reg_pc.wrapping_add(1);
         self.master_clock += CPU_CLOCK_DIV;
 
         // dummy read from stack
-        memory.load8(0x0100 | self.reg_s as u16);
+        memory.cpu_load8(0x0100 | self.reg_s as u16);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.push((self.reg_pc >> 8) as u8, memory);
         self.push((self.reg_pc & 0xFF) as u8, memory);
 
-        let addr_high = memory.load8(self.reg_pc);
+        let addr_high = memory.cpu_load8(self.reg_pc);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.reg_pc = ((addr_high as u16) << 8) | (addr_low as u16);
@@ -708,7 +710,7 @@ impl Cpu {
 
     pub(crate) fn op_lda(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.reg_a = op;
@@ -721,7 +723,7 @@ impl Cpu {
 
     pub(crate) fn op_ldx(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.reg_x = op;
@@ -734,7 +736,7 @@ impl Cpu {
 
     pub(crate) fn op_ldy(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.reg_y = op;
@@ -760,10 +762,10 @@ impl Cpu {
 
     pub(crate) fn op_lsr_m(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
-        memory.store8(op_addr, op);
+        memory.cpu_store8(op_addr, op);
         self.master_clock += CPU_CLOCK_DIV;
 
         let res = op.wrapping_shr(1);
@@ -772,7 +774,7 @@ impl Cpu {
         self.set_flag(Flags::Zero, (res & 0xFF) == 0);
         self.set_flag(Flags::Negative, (res & 0x80) != 0);
 
-        memory.store8(op_addr, res);
+        memory.cpu_store8(op_addr, res);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
@@ -786,7 +788,7 @@ impl Cpu {
 
     pub(crate) fn op_ora(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         self.reg_a |= op;
@@ -808,7 +810,7 @@ impl Cpu {
     /// meaning the stack will loop around
     fn push(&mut self, val: u8, memory: &mut dyn Memory) {
         let addr = 0x0100 | (self.reg_s as u16);
-        memory.store8(addr, val);
+        memory.cpu_store8(addr, val);
         self.master_clock += CPU_CLOCK_DIV;
         self.reg_s = self.reg_s.wrapping_sub(1);
     }
@@ -829,7 +831,7 @@ impl Cpu {
         self.reg_s = self.reg_s.wrapping_add(1);
 
         let addr = 0x0100 | (self.reg_s as u16);
-        let res = memory.load8(addr);
+        let res = memory.cpu_load8(addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         res
@@ -853,7 +855,7 @@ impl Cpu {
     pub(crate) fn op_pla(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         self.get_operand_addr(AddressingMode::Implicit, memory, false);
 
-        memory.load8(0x0100 | (self.reg_s as u16));
+        memory.cpu_load8(0x0100 | (self.reg_s as u16));
         self.master_clock += CPU_CLOCK_DIV;
 
         let val = self.pull(memory);
@@ -868,7 +870,7 @@ impl Cpu {
     pub(crate) fn op_plp(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         self.get_operand_addr(AddressingMode::Implicit, memory, false);
 
-        memory.load8(0x0100 | (self.reg_s as u16));
+        memory.cpu_load8(0x0100 | (self.reg_s as u16));
         self.master_clock += CPU_CLOCK_DIV;
 
         let val = self.pull(memory);
@@ -897,10 +899,10 @@ impl Cpu {
 
     pub(crate) fn op_rol_m(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
-        memory.store8(op_addr, op);
+        memory.cpu_store8(op_addr, op);
         self.master_clock += CPU_CLOCK_DIV;
 
         let mut res = (op as u16) << 1;
@@ -915,7 +917,7 @@ impl Cpu {
         self.set_flag(Flags::Zero, res == 0);
         self.set_flag(Flags::Negative, (res & 0x80) != 0);
 
-        memory.store8(op_addr, res);
+        memory.cpu_store8(op_addr, res);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
@@ -941,10 +943,10 @@ impl Cpu {
 
     pub(crate) fn op_ror_m(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, false);
-        let op = memory.load8(op_addr);
+        let op = memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
-        memory.store8(op_addr, op);
+        memory.cpu_store8(op_addr, op);
         self.master_clock += CPU_CLOCK_DIV;
 
         let mut res = op.wrapping_shr(1);
@@ -959,7 +961,7 @@ impl Cpu {
         self.set_flag(Flags::Zero, res == 0);
         self.set_flag(Flags::Negative, (res & 0x80) != 0);
 
-        memory.store8(op_addr, res);
+        memory.cpu_store8(op_addr, res);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
@@ -968,7 +970,7 @@ impl Cpu {
     pub(crate) fn op_rti(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         self.get_operand_addr(AddressingMode::Implicit, memory, false);
 
-        memory.load8(0x0100 | (self.reg_s as u16));
+        memory.cpu_load8(0x0100 | (self.reg_s as u16));
         self.master_clock += CPU_CLOCK_DIV;
 
         let p = self.pull(memory);
@@ -986,7 +988,7 @@ impl Cpu {
     pub(crate) fn op_rts(&mut self, _: AddressingMode, memory: &mut dyn Memory) -> u8 {
         self.get_operand_addr(AddressingMode::Implicit, memory, false);
 
-        memory.load8(0x0100 | (self.reg_s as u16));
+        memory.cpu_load8(0x0100 | (self.reg_s as u16));
         self.master_clock += CPU_CLOCK_DIV;
 
         let ret_addr_low = self.pull(memory);
@@ -996,7 +998,7 @@ impl Cpu {
 
         self.reg_pc = ret_addr.wrapping_add(1);
 
-        memory.load8(ret_addr);
+        memory.cpu_load8(ret_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
@@ -1004,7 +1006,7 @@ impl Cpu {
 
     pub(crate) fn op_sbc(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, true);
-        let op = !memory.load8(op_addr);
+        let op = !memory.cpu_load8(op_addr);
         self.master_clock += CPU_CLOCK_DIV;
 
         let carry_in: u16 = self.get_flag(Flags::Carry) as u16;
@@ -1047,7 +1049,7 @@ impl Cpu {
     pub(crate) fn op_sta(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, false);
         
-        memory.store8(op_addr, self.reg_a);
+        memory.cpu_store8(op_addr, self.reg_a);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
@@ -1056,7 +1058,7 @@ impl Cpu {
     pub(crate) fn op_stx(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, false);
         
-        memory.store8(op_addr, self.reg_x);
+        memory.cpu_store8(op_addr, self.reg_x);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
@@ -1065,7 +1067,7 @@ impl Cpu {
     pub(crate) fn op_sty(&mut self, addr_mode: AddressingMode, memory: &mut dyn Memory) -> u8 {
         let op_addr = self.get_operand_addr(addr_mode, memory, false);
         
-        memory.store8(op_addr, self.reg_y);
+        memory.cpu_store8(op_addr, self.reg_y);
         self.master_clock += CPU_CLOCK_DIV;
 
         0
